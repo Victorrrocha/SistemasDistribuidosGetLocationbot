@@ -80,7 +80,7 @@ def location(update, context):
         {"user_id": update.message.from_user.id}, 
         user_location, 
         upsert= True
-    ) #insere se não existir
+    ) #insere se não existir, se existir ele substitui as informações
     
 
 def inlinequery(update, context):
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     client = MongoClient('localhost', 27017) # making connection
     db = client.locations # getting database 'locations'
     collection = db.loc_collection # getting collection 'loc_collection'
-    collection.create_index([("geometry", pymongo.GEOSPHERE)])
+    collection.create_index([("geometry", pymongo.GEOSPHERE)]) #create 2dsphere index
 
     print("press CTRL + C to cancel.")
     main()
