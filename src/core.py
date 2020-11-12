@@ -63,16 +63,21 @@ def calc_smaller_distance(latitude, longitude):
 def my_location(update, context):
     print(update)
     search = collection.find_one({"user_id": update.message.from_user.id})
-    coord = search["geometry"]["coordinates"]
-    response_message = f"Última localização: Long: {coord[0]} Lat: {coord[1]}"
+    if(search != None):
+        response_message = "Não foi encontrado sua localização. Envie sua localização ou tente novamente."
+    else:
+        coord = search["geometry"]["coordinates"]
+        response_message = f"Última localização: Long: {coord[0]} Lat: {coord[1]}"
     context.bot.sendMessage(chat_id=update.effective_chat.id,
-                            text=response_message)
+                                text=response_message)
 
 def location(update, context):
     """
     docstring
     """
+    print()
     print(update)
+    user_id = ''
     if update.edited_message:
         print("Mensagem atualizada de", update.edited_message.from_user.first_name, update.edited_message.location.longitude, update.edited_message.location.latitude)
         user_location = {
@@ -83,8 +88,8 @@ def location(update, context):
                 "coordinates": [update.edited_message.location.longitude, 
                                 update.edited_message.location.latitude]
             }
-            
         }
+        user_id = update.edited_message.from_user.id
     else:
         print("Mensagem nova de", update.message.from_user.first_name, update.message.location.longitude, update.message.location.latitude)
         user_location = {
@@ -96,8 +101,9 @@ def location(update, context):
                                 update.message.location.latitude]
             }
         }
+        user_id = update.message.from_user.id
     collection.replace_one(
-        {"user_id": update.message.from_user.id}, 
+        {"user_id": user_id}, 
         user_location, 
         upsert= True
     ) #insere se não existir, se existir ele substitui as informações
@@ -108,10 +114,10 @@ def inlinequery(update, context):
     results = [
         InlineQueryResultLocation(id = uuid4(), 
                                   latitude = update.inline_query.location.latitude, 
-                                  longitude = update.inline_query.location.longitude, title="Location")
+                                  longitude = update.inline_query.location.longitude, title="Sua localização")
     ]
-
     update.inline_query.answer(results)
+    print(update.inline_query)
 
 def unknown(update, context):
     response_message = "Comando não reconhecido"
