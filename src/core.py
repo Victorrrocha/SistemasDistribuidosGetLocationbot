@@ -8,7 +8,9 @@ from uuid import uuid4
 from telegram import InlineQueryResultArticle, ParseMode, InputTextMessageContent, InlineQueryResultLocation
 from telegram.ext import Updater, InlineQueryHandler, CommandHandler, CallbackContext, CommandHandler, Filters, MessageHandler, Updater
 from telegram.utils.helpers import escape_markdown
+
 from pymongo import MongoClient
+import pymongo
 from conf.settings import BASE_API_URL, TELEGRAM_TOKEN
 
 
@@ -49,9 +51,9 @@ def calc_smaller_distance(latitude, longitude):
     for i in points_lat_long:
         latitude_point   = math.radians(points_lat_long[i][0])
         longitude_point  = math.radians(points_lat_long[i][1])
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-        a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+        dlon = longitude_point - longitude_user
+        dlat = latitude_point - latitude_user
+        a = math.sin(dlat / 2)**2 + math.cos(latitude_user) * math.cos(latitude_point) * math.sin(dlon / 2)**2
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         distance = R * c
         if distance < menor:
@@ -63,7 +65,7 @@ def calc_smaller_distance(latitude, longitude):
 def my_location(update, context):
     print(update)
     search = collection.find_one({"user_id": update.message.from_user.id})
-    if(search != None):
+    if(search == None):
         response_message = "Não foi encontrado sua localização. Envie sua localização ou tente novamente."
     else:
         coord = search["geometry"]["coordinates"]
@@ -111,11 +113,32 @@ def location(update, context):
 
 def inlinequery(update, context):
     # query = update.inline_query.query
+    # results = [
+    #     InlineQueryResultLocation(id = uuid4(), 
+    #                               latitude = update.inline_query.location.latitude, 
+    #                               longitude = update.inline_query.location.longitude, title="Sua localização")
+    # ]
+    
+    res = calc_smaller_distance(update.inline_query.location.latitude, update.inline_query.location.longitude)
     results = [
         InlineQueryResultLocation(id = uuid4(), 
-                                  latitude = update.inline_query.location.latitude, 
-                                  longitude = update.inline_query.location.longitude, title="Sua localização")
+                                  latitude = points_lat_long[res][0], 
+                                  longitude = points_lat_long[res][1], 
+                                  title=res)
     ]
+    
+    # Código abaixo comentado para uso futuro
+    # search = collection.find({
+    #     "geometry": {
+    #         "$nearSphere" : [update.inline_query.location.longitude, 
+    #                          update.inline_query.location.latitude]
+    #     }
+    # })
+    # a função find() retorna um objeto Cursor que é usado para iterar os resultados de uma query. Ao usá-lo para percorrer os resultados, não será possível usá-lo novamente. Use a função clone() caso use mais de uma vez antes do primeiro uso.
+    # results = [InlineQueryResultLocation(id = uuid4(), 
+    #                                      latitude  = i["geometry"]["coordinates"][0], 
+    #                                      longitude = i["geometry"]["coordinates"][1], 
+    #                                      title = i["user_name"]) for i in list(search)]
     update.inline_query.answer(results)
     print(update.inline_query)
 
@@ -161,6 +184,8 @@ if __name__ == '__main__':
     db = client.locations # getting database 'locations'
     collection = db.loc_collection # getting collection 'loc_collection'
     collection.create_index([("geometry", pymongo.GEOSPHERE)]) #create 2dsphere index
+    
+    print([i for i in collection.find()])
 
     print("press CTRL + C to cancel.")
     main()
