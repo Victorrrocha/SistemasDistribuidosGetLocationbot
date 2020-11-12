@@ -1,18 +1,18 @@
 #Programa adapatado de https://github.com/python-telegram-bot/python-telegram-bot/blob/master/examples/inlinebot.py
 
 import logging
+import math
+import pymongo
+import json
 from uuid import uuid4
-
 from telegram import InlineQueryResultArticle, ParseMode, InputTextMessageContent, InlineQueryResultLocation
 from telegram.ext import Updater, InlineQueryHandler, CommandHandler, CallbackContext, CommandHandler, Filters, MessageHandler, Updater
 from telegram.utils.helpers import escape_markdown
-
 from pymongo import MongoClient
-import pymongo
-
-import json
-
 from conf.settings import BASE_API_URL, TELEGRAM_TOKEN
+
+
+points_lat_long = {"Garimpeiro": [2.820486,-60.671979], "portalMilenio":[2.824720, -60.676921]}
 
 # Enable logging
 logging.basicConfig(
@@ -39,6 +39,26 @@ def http_cats(update, context):
         chat_id=update.effective_chat.id,
         photo=BASE_API_URL + context.args[0]
     )
+
+def calc_smaller_distance(latitude, longitude):
+    R = 6373.0
+    latitude_user   = math.radians(latitude)
+    longitude_user  = math.radians(longitude)
+    menor = 999999999
+
+    for i in points_lat_long:
+        latitude_point   = math.radians(points_lat_long[i][0])
+        longitude_point  = math.radians(points_lat_long[i][1])
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        distance = R * c
+        if distance < menor:
+            menor = distance
+            name_point = i
+    return name_point
+    
 
 def my_location(update, context):
     print(update)
