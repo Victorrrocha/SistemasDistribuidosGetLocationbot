@@ -180,7 +180,7 @@ def main():
 
 if __name__ == '__main__':
     print("Starting connection with database server")
-    client = MongoClient('localhost', 27017) # making connection
+    client = MongoClient('mongodb://root:030596victor@mongo:27017') # making connection
     db = client.locations # getting database 'locations'
     collection = db.loc_collection # getting collection 'loc_collection'
     collection.create_index([("geometry", pymongo.GEOSPHERE)]) #create 2dsphere index

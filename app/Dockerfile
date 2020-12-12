@@ -1,20 +1,17 @@
-# Use the official image as a parent image.
+# set base image (host OS)
 FROM python:3.8
 
-COPY ./requirements.txt .
+# set the working directory in the container
+WORKDIR /app
 
+# copy the dependencies file to the working directory
+COPY requirements.txt .
+
+# install dependencies
 RUN pip3 install -r requirements.txt
 
-WORKDIR /app
-#
+# copy the content of the local src directory to the working directory
 COPY ./src/ /app/src/
 
-
-
-
-
-# Add metadata to the image to describe which port the container is listening on at runtime.
-EXPOSE 8080
-# Run the specified command within the container.
+# command to run on container start
 CMD [ "python3", "src/core.py" ]
-
