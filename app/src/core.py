@@ -12,7 +12,7 @@ from telegram.utils.helpers import escape_markdown
 from pymongo import MongoClient
 import pymongo
 from conf.settings import BASE_API_URL, TELEGRAM_TOKEN
-
+from bson.objectid import ObjectId
 
 points_lat_long = {"Garimpeiro": [2.820486,-60.671979], "portalMilenio":[2.824720, -60.676921]}
 
@@ -38,12 +38,14 @@ def start(update, context):
 
 def comecar_partida(update, context):
     print(update)
-    partida_collection.update({
+    partida_collection.update_one({
         "id_host": update.message.from_user.id
     },{
-        "id_host": update.message.from_user.id,
-        "nome_host": update.message.from_user.first_name,
-        "state": "ESPERANDO_LOCAL"
+        "$set": {
+            "id_host": update.message.from_user.id,
+            "nome_host": update.message.from_user.first_name,
+            "state": "ESPERANDO_LOCAL"
+        }
     }, upsert=True)
     partida = partida_collection.find_one({"id_host": update.message.from_user.id})
     print(partida)
@@ -51,6 +53,69 @@ def comecar_partida(update, context):
         chat_id=update.effective_chat.id,
         text="O ID da partida é "+str(partida["_id"])
     )
+
+def enviar_localizacao(update, context):
+    """
+    1) Tenta inserir na coleção de partidas
+    2)
+    """
+    if update.edited_message:
+        user_location = {
+            'user_id':   update.edited_message.from_user.id,
+            'user_name': update.edited_message.from_user.first_name,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [update.edited_message.location.longitude, 
+                                update.edited_message.location.latitude]
+            }
+        }
+    else:
+        user_location = {
+            'user_id':   update.message.from_user.id,
+            'user_name': update.message.from_user.first_name,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [update.message.location.longitude, 
+                                update.message.location.latitude]
+            }
+        }
+    partida = partida_collection.find_one({"id_host": user_location['user_id']})
+    if(partida != None):
+        if(partida["state"] == "ESPERANDO_LOCAL"):
+            partida_collection.update_one({
+                "id_host": user_location['user_id']
+            },
+            { 
+                "$set": {
+                    "local_tesouro": user_location["geometry"],
+                    "state": "PRONTO"
+                }
+            })
+    else:
+        jogador = jogadores_collection.update_one({
+            "id_jogador": user_location['user_id']
+        },
+        {   "$set": {
+                "local_jogador": user_location["geometry"]
+            }
+        })
+
+def novo_jogador(update, context):
+    partida = partida_collection.find_one({"id_host": update.message.from_user.id})
+    if(partida == None): #se ele não tiver como host
+        if(len(context.args) == 0): return
+        partida = partida_collection.find_one({"_id": ObjectId(context.args[0])})
+        if(partida == None): return
+        jogadores_collection.update_one({
+            "id_jogador": update.message.from_user.id
+        },
+        {
+            "$set": {
+                "id_jogador": update.message.from_user.id,
+                "nome_jogador": update.message.from_user.first_name,
+                "id_partida": context.args[0]
+            }
+        }, upsert=True)
 
 def http_cats(update, context):
     context.bot.sendPhoto(
@@ -177,7 +242,10 @@ def main():
         CommandHandler('comecar_partida', comecar_partida)
     )
     dispatcher.add_handler(
-        MessageHandler(Filters.location, location)
+        MessageHandler(Filters.location, enviar_localizacao)
+    )
+    dispatcher.add_handler(
+        CommandHandler('novo_jogador', novo_jogador, pass_args=True)
     )
     dispatcher.add_handler(
         CommandHandler('http', http_cats, pass_args=True)
@@ -203,7 +271,9 @@ if __name__ == '__main__':
     db = client.locations # getting database 'locations'
     collection = db.loc_collection # getting collection 'loc_collection'
     collection.create_index([("geometry", pymongo.GEOSPHERE)]) #create 2dsphere index
-    partida_collection = db.partida_collection # getting collection 'loc_collection'
+    partida_collection = db.partida_collection
+    partida_collection.create_index([("local_tesouro", pymongo.GEOSPHERE)])
+    jogadores_collection = db.jogadores_collection
     
     print([i for i in collection.find()])
 
