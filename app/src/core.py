@@ -36,6 +36,22 @@ def start(update, context):
         text=response_message
     )
 
+def comecar_partida(update, context):
+    print(update)
+    partida_collection.update({
+        "id_host": update.message.from_user.id
+    },{
+        "id_host": update.message.from_user.id,
+        "nome_host": update.message.from_user.first_name,
+        "state": "ESPERANDO_LOCAL"
+    }, upsert=True)
+    partida = partida_collection.find_one({"id_host": update.message.from_user.id})
+    print(partida)
+    context.bot.sendMessage(
+        chat_id=update.effective_chat.id,
+        text="O ID da partida é "+str(partida["_id"])
+    )
+
 def http_cats(update, context):
     context.bot.sendPhoto(
         chat_id=update.effective_chat.id,
@@ -61,7 +77,6 @@ def calc_smaller_distance(latitude, longitude):
             name_point = i
     return name_point
     
-
 def my_location(update, context):
     print(update)
     search = collection.find_one({"user_id": update.message.from_user.id})
@@ -75,7 +90,8 @@ def my_location(update, context):
 
 def location(update, context):
     """
-    docstring
+    1) Tenta inserir na coleção de partidas
+    2)
     """
     print()
     print(update)
@@ -158,13 +174,16 @@ def main():
         CommandHandler('start', start)
     )
     dispatcher.add_handler(
+        CommandHandler('comecar_partida', comecar_partida)
+    )
+    dispatcher.add_handler(
+        MessageHandler(Filters.location, location)
+    )
+    dispatcher.add_handler(
         CommandHandler('http', http_cats, pass_args=True)
     )
     dispatcher.add_handler(
         CommandHandler('my_location', my_location)
-    )
-    dispatcher.add_handler(
-        MessageHandler(Filters.location, location)
     )
     dispatcher.add_handler(
         InlineQueryHandler(inlinequery)
@@ -184,6 +203,7 @@ if __name__ == '__main__':
     db = client.locations # getting database 'locations'
     collection = db.loc_collection # getting collection 'loc_collection'
     collection.create_index([("geometry", pymongo.GEOSPHERE)]) #create 2dsphere index
+    partida_collection = db.partida_collection # getting collection 'loc_collection'
     
     print([i for i in collection.find()])
 
