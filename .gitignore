@@ -2,3 +2,4 @@ src/conf/__pycache__/*
 src/conf/.env
 sbc_template.odt
 Relatório.odt
+app/src/conf/.env
