@@ -30,9 +30,10 @@ logger = logging.getLogger(__name__)
 def start(update, context):
     response_message = """
     Comandos disponíveis:
-    /http <status HTTP>
-    /my_location
-    /dig
+    /comecar_partida - iniciar uma partida.
+    /novo_jogador <id da partida> - entrar em uma partida.
+    /marco - cava em busca do tesouro.
+    /encerrar_partida - sair da partida.
     
     Você também pode enviar a localização para o bot"""
     context.bot.sendMessage(
@@ -42,21 +43,29 @@ def start(update, context):
 
 def comecar_partida(update, context):
     print(update)
-    partida_collection.update_one({
-        "id_host": update.message.from_user.id
-    },{
-        "$set": {
-            "id_host": update.message.from_user.id,
-            "nome_host": update.message.from_user.first_name,
-            "state": "ESPERANDO_LOCAL"
-        }
-    }, upsert=True)
-    partida = partida_collection.find_one({"id_host": update.message.from_user.id})
-    print(partida)
-    context.bot.sendMessage(
-        chat_id=update.effective_chat.id,
-        text="O ID da partida é "+str(partida["_id"])
-    )
+    search = jogadores_collection.find_one({"id_jogador": update.message.from_user.id})
+    print("jogadores_collection.find_one", search)
+    if(search != None): # ele está como jogador
+        context.bot.sendMessage(
+            chat_id=update.effective_chat.id,
+            text="Você está cadastrado como jogador em outra partida. Digite /encerrar_partida para sair da partida."
+        )
+    else:
+        partida_collection.update_one({
+            "id_host": update.message.from_user.id
+        },{
+            "$set": {
+                "id_host": update.message.from_user.id,
+                "nome_host": update.message.from_user.first_name,
+                "state": "ESPERANDO_LOCAL"
+            }
+        }, upsert=True)
+        partida = partida_collection.find_one({"id_host": update.message.from_user.id})
+        print("partida_collection.find_one", partida)
+        context.bot.sendMessage(
+            chat_id=update.effective_chat.id,
+            text="O ID da partida é {} . Envie sua localização quando quiser gravar o local do tesouro.".format(str(partida["_id"]))
+        )
 
 def enviar_localizacao(update, context):
     """
@@ -108,9 +117,15 @@ def enviar_localizacao(update, context):
 def novo_jogador(update, context):
     partida = partida_collection.find_one({"id_host": update.message.from_user.id})
     if(partida == None): #se ele não tiver como host
-        if(len(context.args) == 0): return
+        if(len(context.args) == 0): #não tem o argumento com o ID
+            context.bot.sendMessage(chat_id=update.effective_chat.id,
+                                    text="Envie o ID da partida junto com o comando.")
+            return
         partida = partida_collection.find_one({"_id": ObjectId(context.args[0])})
-        if(partida == None): return
+        if(partida == None): #não existe essa partida
+            context.bot.sendMessage(chat_id=update.effective_chat.id,
+                                    text="Essa partida não existe.")
+            return
         jogadores_collection.update_one({
             "id_jogador": update.message.from_user.id
         },
@@ -122,13 +137,18 @@ def novo_jogador(update, context):
                 "escavacoes": 0
             }
         }, upsert=True)
+        context.bot.sendMessage(chat_id=update.effective_chat.id,
+                                    text="Pronto!! Você está participando dessa partida!")
+    else:
+        context.bot.sendMessage(chat_id=update.effective_chat.id,
+                                text="Você já está como host de outro partida. Digite /encerrar_partida para encerrar a sua partida como host.")
 
 def dig(update, context):
     print(update)
     search = jogadores_collection.find_one({"id_jogador": update.message.from_user.id})
     print(search)
     if(search == None):
-        response_message = "Usuário não encontrado. Use o comando /novo_jogador."
+        response_message = "Usuário não encontrado. Use o comando /novo_jogador ."
     else:
         if ("local_jogador" not in search.keys()):
             response_message = "Você não tem localização salva, por favor envie sua localização."
@@ -141,30 +161,77 @@ def dig(update, context):
                     "near": coord,
                     "spherical": True,
                     "distanceField": "dist_calculated",
-                    "query": {"_id": ObjectId(search["id_partida"])}
+                    "query": {"_id": ObjectId(search["id_partida"])},
+                    "distanceMultiplier": 6371000
                 }
             }])
-            print(resultado)
-
-            resultado = list(resultado)[0]
-
-            response_message = "Tis cold as da Artic here ye scurvy dog! Do ye wish ta walk da plank?! Find us da tresure!"
-
-            if(resultado["dist_calculated"] < 1000):
-                response_message = "AHOY LASS! Yer just found mah tresure! Suas Coord => Long: {} Lat: {}".format(coord[0], coord[1])
-                position = "google.com/maps/@{},{},21z".format(coord[0], coord[1])
-                twtApi.PostUpdate("A seadog has fund a treasure {}".format(position))
+            
+            resultado = list(resultado)
+            if(len(resultado) == 0):
+                response_message = "O host não enviou a localização do tesouro ainda."
             else:
-                response_message = "Attention mate! I can smell da tresure! Keep yer eys open. U are {} of distance".format(resultado["dist_calculated"])
-                jogadores_collection.update_one({
-                    "id_jogador": update.message.from_user.id
-                }, {
-                    "$inc": {
-                        "escavacoes": 1
-                    }
-                })
+                resultado = resultado[0]
+                print(resultado)
+
+                response_message = "Tis cold as da Artic here ye scurvy dog! Do ye wish ta walk da plank?! Find us da tresure!"
+
+                if(resultado["dist_calculated"] < 40):
+                    if(resultado["state"] == "PRONTO"):
+                        response_message = "AHOY LASS! Yer just found mah tresure! Suas Coord => Long: {} Lat: {}".format(coord[0], coord[1])
+                        position = "google.com/maps/@{},{},21z".format(coord[1], coord[0])
+                        try:
+                            twtApi.PostUpdate("A seadog has fund a treasure {}".format(position))
+                        except twitter.error.TwitterError as e:
+                            print('Erro na API do Twitter:', e)
+                        partida_collection.update_one({
+                            "_id": ObjectId(search["id_partida"])
+                        }, {
+                            "$set": {
+                                "state": "ENCONTRADO"
+                            }
+                        })
+                    elif(resultado["state"] == "ENCONTRADO"):
+                        response_message = "HEY MAFRIEND! Tis tresure was found!"
+                else:
+                    response_message = "Attention mate! I can smell da tresure! Keep yer eys open. U are {} meters of distance".format(resultado["dist_calculated"])
+                    jogadores_collection.update_one({
+                        "id_jogador": update.message.from_user.id
+                    }, {
+                        "$inc": {
+                            "escavacoes": 1
+                        }
+                    })
     context.bot.sendMessage(chat_id=update.effective_chat.id,
                                 text=response_message)
+
+def encerrar_partida(update, context):
+    result = partida_collection.find_one_and_delete({"id_host": update.message.from_user.id})
+
+    # result = partida_collection.find_one({
+    #     "id_host": update.message.from_user.id
+    # })
+    # id_partida = result['_id']
+    # result = partida_collection.delete_one({
+    #     "id_host": update.message.from_user.id
+    # })
+    print("result", result)
+    if(result != None):
+        response_message = "Sua partida como host foi encerrada."
+        jogadores_collection.delete_many({"id_partida": str(result["_id"])})
+    else:
+        result = jogadores_collection.delete_one({
+            "id_jogador": update.message.from_user.id
+        })
+        print("result", result)
+        if(result == 1):
+            response_message = "Sua partida como jogador foi encerrada."
+        else:
+            response_message = "Tu não está cadastrado em nada."
+
+    context.bot.sendMessage(
+        chat_id=update.effective_chat.id,
+        text=response_message
+    )
 
 def unknown(update, context):
     response_message = "Comando não reconhecido"
@@ -192,6 +259,9 @@ def main():
     )
     dispatcher.add_handler(
         CommandHandler('marco', dig)
+    )
+    dispatcher.add_handler(
+        CommandHandler('encerrar_partida', encerrar_partida)
     )
 
     updater.start_polling()
